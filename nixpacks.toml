@@ -2,7 +2,7 @@
 cmds = ["npm install", "npx tsc"]
 
 [phases.start]
-cmd = "node dist/server/server.js"
+cmd = "node dist/server.js"
 
 [variables]
 PORT = "3000"
