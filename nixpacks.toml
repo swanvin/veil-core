@@ -1,0 +1,8 @@
+[phases.build]
+cmds = ["npm install", "npx tsc"]
+
+[phases.start]
+cmd = "node dist/server/server.js"
+
+[variables]
+PORT = "3000"
