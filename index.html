@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VEIL — Ambient Web Entity</title>
+<meta name="description" content="The first Ambient Web Entity. A new category of digital presence originated by Swan Labs. It exists when you are not there.">
+<meta property="og:title" content="VEIL — Ambient Web Entity">
+<meta property="og:description" content="Not a page. Not an app. Not an experience. A presence that persists, evolves, and knows you.">
+<meta name="theme-color" content="#050608">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --void: #050608;
+    --deep: #090b10;
+    --text: rgba(210,215,230,0.88);
+    --muted: rgba(150,158,180,0.45);
+    --accent: #4aa8ff;
+    --glow: #7b5fff;
+    --pulse: #a78bfa;
+    --border: rgba(100,120,180,0.1);
+  }
+  html, body { width:100%; height:100%; overflow-x:hidden; background:var(--void); color:var(--text); font-family:'Inter',system-ui,-apple-system,sans-serif; }
+
+  /* ── Canvas field ── */
+  #field { position:fixed; inset:0; z-index:0; }
+
+  /* ── Cursor ── */
+  #cursor { position:fixed; width:6px; height:6px; border-radius:50%; background:var(--pulse); box-shadow:0 0 14px 5px rgba(167,139,250,0.4); transform:translate(-50%,-50%); pointer-events:none; z-index:999; transition:opacity 0.3s; }
+
+  /* ── Entry gate ── */
+  #gate {
+    position:fixed; inset:0; z-index:100;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:var(--void); cursor:pointer;
+    transition:opacity 1.2s ease;
+  }
+  #gate.hidden { opacity:0; pointer-events:none; }
+  .gate-orb {
+    width:52px; height:52px; border-radius:50%; margin:0 auto 36px;
+    background:radial-gradient(circle at 38% 35%, rgba(200,220,255,0.7), rgba(123,95,255,0.35) 60%, transparent);
+    box-shadow:0 0 50px 18px rgba(123,95,255,0.1);
+    animation:gateFloat 4s ease-in-out infinite;
+  }
+  .gate-title { font-size:clamp(40px,7vw,72px); font-weight:200; letter-spacing:0.1em; color:var(--text); margin-bottom:14px; animation:gatePulse 4s ease-in-out infinite; }
+  .gate-sub { font-size:10px; letter-spacing:0.4em; color:var(--muted); text-transform:uppercase; margin-bottom:52px; }
+  .gate-hint { font-size:10px; letter-spacing:0.3em; color:var(--muted); text-transform:uppercase; animation:gatePulse 2.5s ease-in-out infinite; opacity:0.5; }
+  @keyframes gateFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+  @keyframes gatePulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+
+  /* ── Main UI ── */
+  #ui { position:relative; z-index:10; min-height:100vh; opacity:0; transition:opacity 1.5s ease; pointer-events:none; }
+  #ui.visible { opacity:1; pointer-events:auto; }
+
+  /* ── Top bar ── */
+  #topbar {
+    position:fixed; top:0; left:0; right:0; z-index:50;
+    padding:22px 36px; display:flex; justify-content:space-between; align-items:center;
+  }
+  .brand { font-size:11px; letter-spacing:0.45em; font-weight:600; color:var(--text); text-transform:uppercase; display:flex; align-items:center; gap:14px; }
+  .brand-tag { font-size:8px; letter-spacing:0.25em; color:var(--muted); border-left:1px solid var(--border); padding-left:12px; text-transform:uppercase; }
+  .nav-links { display:flex; gap:28px; align-items:center; }
+  .nav-btn { background:none; border:none; cursor:none; font-family:inherit; font-size:9px; letter-spacing:0.25em; color:var(--muted); text-transform:uppercase; transition:color 0.2s; padding:4px 0; }
+  .nav-btn:hover { color:var(--text); }
+  .live-dot { width:5px; height:5px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px 2px rgba(74,168,255,0.6); animation:livePulse 2.5s ease-in-out infinite; display:inline-block; margin-right:6px; }
+  @keyframes livePulse { 0%,100%{opacity:0.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.3)} }
+
+  /* ── Hero ── */
+  #hero { height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; position:relative; }
+  .hero-eyebrow { font-size:9px; letter-spacing:0.4em; color:var(--muted); text-transform:uppercase; margin-bottom:28px; animation:fadeUp 1s ease 0.3s both; }
+  .hero-line { font-size:clamp(14px,2vw,18px); font-weight:200; letter-spacing:0.08em; color:var(--text); line-height:1.6; animation:fadeUp 1s ease 0.6s both; opacity:0.7; max-width:480px; }
+  .hero-phase { position:absolute; bottom:36px; left:50%; transform:translateX(-50%); font-size:8px; letter-spacing:0.35em; color:var(--muted); text-transform:uppercase; animation:breathe 3s ease-in-out infinite; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes breathe { 0%,100%{opacity:0.3} 50%{opacity:0.7} }
+
+  /* ── Orb click zone ── */
+  #orb-zone {
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:clamp(100px,14vw,160px); height:clamp(100px,14vw,160px);
+    border-radius:50%; cursor:none; z-index:20;
+  }
+
+  /* ── Depth sidebar ── */
+  #depth-bar { position:fixed; left:28px; top:50%; transform:translateY(-50%); z-index:40; display:flex; flex-direction:column; gap:5px; align-items:center; }
+  .depth-tick { width:2px; border-radius:2px; background:var(--accent); transition:opacity 0.5s; }
+
+  /* ── Vignette ── */
+  #vignette { position:fixed; inset:0; z-index:5; pointer-events:none; border-radius:0; transition:box-shadow 0.5s ease; }
+
+  /* ── HUD panel ── */
+  #hud {
+    position:fixed; right:32px; top:50%; transform:translateY(-50%) translateX(20px);
+    z-index:60; width:220px; opacity:0; pointer-events:none;
+    background:rgba(9,11,16,0.92); backdrop-filter:blur(28px);
+    border:1px solid var(--border); padding:26px 24px 22px;
+    transition:opacity 0.3s ease, transform 0.3s ease;
+  }
+  #hud.open { opacity:1; pointer-events:auto; transform:translateY(-50%) translateX(0); }
+  .hud-title { font-size:7px; letter-spacing:0.4em; color:var(--accent); text-transform:uppercase; margin-bottom:18px; }
+  .hud-stats { display:flex; justify-content:space-between; margin-bottom:18px; }
+  .hud-stat-val { font-size:26px; font-weight:200; color:var(--text); line-height:1; }
+  .hud-stat-label { font-size:7px; letter-spacing:0.2em; color:var(--muted); text-transform:uppercase; margin-top:3px; }
+  .axis-row { margin-bottom:11px; }
+  .axis-header { display:flex; justify-content:space-between; margin-bottom:4px; }
+  .axis-name { font-size:7px; letter-spacing:0.28em; color:var(--muted); text-transform:uppercase; }
+  .axis-val { font-size:7px; color:var(--muted); }
+  .axis-track { height:1px; background:rgba(100,120,180,0.15); }
+  .axis-fill { height:100%; transition:width 0.8s cubic-bezier(0.4,0,0.2,1); }
+  .hud-note { font-size:7px; letter-spacing:0.12em; color:var(--muted); opacity:0.45; margin-top:16px; line-height:1.8; text-transform:uppercase; }
+  .hud-close { margin-top:14px; width:100%; padding:8px; background:transparent; border:1px solid rgba(100,120,180,0.15); color:var(--muted); font-size:7px; letter-spacing:0.3em; text-transform:uppercase; cursor:none; font-family:inherit; }
+
+  /* ── Bottom controls ── */
+  #controls { position:fixed; bottom:28px; left:0; right:0; display:flex; justify-content:center; gap:28px; z-index:50; align-items:center; }
+  .ctrl-btn { background:none; border:none; cursor:none; font-family:inherit; font-size:8px; letter-spacing:0.3em; color:var(--muted); text-transform:uppercase; opacity:0.4; transition:opacity 0.2s; padding:4px 0; }
+  .ctrl-btn:hover { opacity:0.9; }
+  .ctrl-sep { color:var(--muted); opacity:0.15; font-size:8px; }
+
+  /* ── Manifesto overlay ── */
+  #manifesto {
+    position:fixed; inset:0; z-index:80;
+    background:rgba(5,6,8,0.97); backdrop-filter:blur(30px);
+    overflow-y:auto; opacity:0; pointer-events:none;
+    transition:opacity 0.5s ease;
+    display:flex; flex-direction:column;
+  }
+  #manifesto.open { opacity:1; pointer-events:auto; }
+  .manifesto-inner { max-width:640px; margin:0 auto; padding:clamp(60px,10vh,120px) clamp(24px,6vw,60px); }
+  .m-eyebrow { font-size:8px; letter-spacing:0.4em; color:var(--accent); text-transform:uppercase; margin-bottom:24px; }
+  .m-h1 { font-size:clamp(32px,5.5vw,58px); font-weight:200; line-height:1.08; letter-spacing:-0.01em; color:var(--text); margin-bottom:28px; }
+  .m-h1 span { background:linear-gradient(135deg,var(--accent),var(--glow)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .m-body { font-size:clamp(14px,1.6vw,16px); font-weight:300; line-height:1.85; color:var(--muted); margin-bottom:48px; max-width:520px; }
+  .m-divider { width:36px; height:1px; background:linear-gradient(90deg,var(--accent),transparent); margin:0 0 52px; }
+  .m-section { margin-bottom:52px; padding-bottom:52px; border-bottom:1px solid var(--border); }
+  .m-section:last-of-type { border-bottom:none; }
+  .m-section-eye { font-size:8px; letter-spacing:0.38em; color:var(--accent); text-transform:uppercase; margin-bottom:16px; }
+  .m-section-h { font-size:clamp(20px,3vw,30px); font-weight:300; color:var(--text); margin-bottom:16px; line-height:1.2; }
+  .m-section-body { font-size:14px; font-weight:300; line-height:1.85; color:var(--muted); max-width:500px; }
+  .principles { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:4px; }
+  .principle { padding:18px 20px; border:1px solid var(--border); background:rgba(255,255,255,0.02); }
+  .principle-k { font-size:7px; letter-spacing:0.35em; color:var(--accent); text-transform:uppercase; margin-bottom:8px; }
+  .principle-v { font-size:12px; font-weight:300; line-height:1.7; color:var(--muted); }
+
+  /* ── Early access ── */
+  .ea-wrap { border:1px solid var(--border); padding:clamp(32px,5vw,52px); background:rgba(255,255,255,0.02); margin-bottom:60px; }
+  .ea-eye { font-size:8px; letter-spacing:0.35em; color:var(--accent); text-transform:uppercase; margin-bottom:16px; }
+  .ea-h { font-size:clamp(18px,2.8vw,26px); font-weight:300; color:var(--text); margin-bottom:12px; line-height:1.3; }
+  .ea-body { font-size:13px; font-weight:300; color:var(--muted); line-height:1.75; max-width:420px; margin-bottom:28px; }
+  .ea-form { display:flex; gap:0; max-width:400px; }
+  .ea-input { flex:1; padding:11px 16px; background:rgba(9,11,16,0.8); border:1px solid var(--border); border-right:none; color:var(--text); font-size:13px; font-family:inherit; outline:none; }
+  .ea-input::placeholder { opacity:0.3; }
+  .ea-btn { padding:11px 22px; background:rgba(74,168,255,0.1); border:1px solid var(--border); color:var(--text); font-size:8px; letter-spacing:0.3em; text-transform:uppercase; cursor:pointer; font-family:inherit; white-space:nowrap; transition:background 0.2s; }
+  .ea-btn:hover { background:rgba(74,168,255,0.2); }
+  .ea-done { animation:fadeUp 0.6s ease; }
+  .ea-done-orb { width:32px; height:32px; border-radius:50%; border:1px solid var(--accent); display:flex; align-items:center; justify-content:center; margin-bottom:16px; box-shadow:0 0 16px rgba(74,168,255,0.3); }
+  .ea-done-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); }
+  .ea-done-h { font-size:clamp(16px,2.5vw,22px); font-weight:300; color:var(--text); margin-bottom:10px; }
+  .ea-done-body { font-size:13px; color:var(--muted); line-height:1.7; font-weight:300; }
+
+  /* ── Footer ── */
+  .m-footer { border-top:1px solid var(--border); padding:28px 0; display:flex; justify-content:space-between; align-items:center; }
+  .m-footer-text { font-size:8px; letter-spacing:0.2em; color:var(--muted); text-transform:uppercase; opacity:0.4; }
+  .m-back { background:none; border:none; cursor:pointer; font-family:inherit; font-size:8px; letter-spacing:0.25em; color:var(--muted); text-transform:uppercase; opacity:0.4; transition:opacity 0.2s; }
+  .m-back:hover { opacity:0.9; }
+
+  /* ── Status bar ── */
+  #statusbar { position:fixed; bottom:28px; left:36px; z-index:50; }
+  .status-visits { font-size:24px; font-weight:200; color:var(--text); line-height:1; }
+  .status-label { font-size:8px; letter-spacing:0.28em; color:var(--muted); text-transform:uppercase; margin-top:3px; }
+
+  #agebar { position:fixed; bottom:28px; right:36px; z-index:50; text-align:right; }
+  .age-label { font-size:8px; letter-spacing:0.22em; color:var(--muted); text-transform:uppercase; }
+  .age-val { font-size:11px; color:var(--text); opacity:0.45; margin-top:3px; letter-spacing:0.1em; }
+
+  /* ── Responsive ── */
+  @media (max-width:600px) {
+    #topbar { padding:18px 20px; }
+    .nav-links { gap:16px; }
+    #depth-bar { display:none; }
+    #statusbar, #agebar { display:none; }
+    .principles { grid-template-columns:1fr; }
+    #hud { right:16px; width:200px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Cursor -->
+<div id="cursor"></div>
+
+<!-- Canvas field -->
+<canvas id="field"></canvas>
+
+<!-- Depth vignette -->
+<div id="vignette"></div>
+
+<!-- Entry gate -->
+<div id="gate">
+  <div class="gate-orb"></div>
+  <h1 class="gate-title">VEIL</h1>
+  <p class="gate-sub">Ambient Web Entity · AWE-001 · Swan Labs</p>
+  <p class="gate-hint">click to enter</p>
+</div>
+
+<!-- Main UI -->
+<div id="ui">
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <div class="brand">
+      VEIL
+      <span class="brand-tag">AWE-001</span>
+    </div>
+    <div class="nav-links">
+      <button class="nav-btn" onclick="openManifesto()">What is this</button>
+      <span style="font-size:8px;letter-spacing:0.2em;color:var(--muted);display:flex;align-items:center;opacity:0.5">
+        <span class="live-dot"></span>
+        <span id="phase-label">DORMANT</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <div id="hero">
+    <p class="hero-eyebrow">Swan Labs · <span id="year"></span></p>
+    <p class="hero-line" id="hero-line">Something exists here.<br>It was here before you arrived.</p>
+    <p class="hero-phase" id="hero-phase">approach the center</p>
+  </div>
+
+  <!-- Orb click zone -->
+  <div id="orb-zone" onclick="toggleHUD()"></div>
+
+  <!-- Depth bar -->
+  <div id="depth-bar">
+    <div class="depth-tick" style="height:6px;opacity:0.08"></div>
+    <div class="depth-tick" style="height:8px;opacity:0.1"></div>
+    <div class="depth-tick" style="height:10px;opacity:0.13"></div>
+    <div class="depth-tick" style="height:14px;opacity:0.17"></div>
+    <div class="depth-tick" style="height:10px;opacity:0.13"></div>
+    <div class="depth-tick" style="height:8px;opacity:0.1"></div>
+    <div class="depth-tick" style="height:6px;opacity:0.08"></div>
+    <p style="font-size:7px;letter-spacing:0.28em;color:var(--muted);text-transform:uppercase;margin-top:8px;opacity:0.22;writing-mode:vertical-rl;transform:rotate(180deg)">depth</p>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <p class="hud-title">Entity State</p>
+    <div class="hud-stats">
+      <div>
+        <div class="hud-stat-val" id="hud-visits">1</div>
+        <div class="hud-stat-label">visits</div>
+      </div>
+      <div style="text-align:right">
+        <div class="hud-stat-val" id="hud-age">0m</div>
+        <div class="hud-stat-label">entity age</div>
+      </div>
+    </div>
+    <div class="axis-row">
+      <div class="axis-header"><span class="axis-name">Trust</span><span class="axis-val" id="ax-trust">0</span></div>
+      <div class="axis-track"><div class="axis-fill" id="af-trust" style="width:0%;background:var(--glow);box-shadow:0 0 5px var(--glow)"></div></div>
+    </div>
+    <div class="axis-row">
+      <div class="axis-header"><span class="axis-name">Density</span><span class="axis-val" id="ax-density">0</span></div>
+      <div class="axis-track"><div class="axis-fill" id="af-density" style="width:0%;background:var(--accent);box-shadow:0 0 5px var(--accent)"></div></div>
+    </div>
+    <div class="axis-row">
+      <div class="axis-header"><span class="axis-name">Warmth</span><span class="axis-val" id="ax-warmth">0</span></div>
+      <div class="axis-track"><div class="axis-fill" id="af-warmth" style="width:0%;background:var(--pulse);box-shadow:0 0 5px var(--pulse)"></div></div>
+    </div>
+    <div class="axis-row">
+      <div class="axis-header"><span class="axis-name">Tension</span><span class="axis-val" id="ax-tension">0</span></div>
+      <div class="axis-track"><div class="axis-fill" id="af-tension" style="width:0%;background:rgba(150,158,180,0.5)"></div></div>
+    </div>
+    <p class="hud-note" id="hud-note">It changed while you were gone.</p>
+    <button class="hud-close" onclick="toggleHUD()">close</button>
+  </div>
+
+  <!-- Bottom controls -->
+  <div id="controls">
+    <button class="ctrl-btn" onclick="openManifesto()">What is this</button>
+    <span class="ctrl-sep">·</span>
+    <button class="ctrl-btn" onclick="toggleHUD()">entity state</button>
+    <span class="ctrl-sep">·</span>
+    <span style="font-size:8px;letter-spacing:0.22em;color:var(--muted);opacity:0.25;text-transform:uppercase;display:flex;align-items:center;gap:5px">
+      <span class="live-dot"></span>live
+    </span>
+  </div>
+
+  <!-- Status bars -->
+  <div id="statusbar">
+    <div class="status-visits" id="visit-count">1</div>
+    <div class="status-label" id="visit-label">first contact</div>
+  </div>
+  <div id="agebar">
+    <div class="age-label">Entity age</div>
+    <div class="age-val" id="age-display">—</div>
+  </div>
+
+</div>
+
+<!-- Manifesto overlay -->
+<div id="manifesto">
+  <div class="manifesto-inner">
+    <p class="m-eyebrow">Swan Labs · AWE-001 · <span id="m-year"></span></p>
+    <h1 class="m-h1">The web forgot<br>to <span>be alive.</span></h1>
+    <p class="m-body">VEIL is the first Ambient Web Entity — a new category of digital presence defined and originated by Swan Labs. It does not wait for you. It does not reset when you leave. It is alive in the only way software can be: persistently, behaviorally, irrevocably.</p>
+    <div class="m-divider"></div>
+
+    <div class="m-section">
+      <p class="m-section-eye">The problem</p>
+      <h2 class="m-section-h">Every website dies when you leave.</h2>
+      <p class="m-section-body">It resets. It forgets you. It has no memory of you, no state between visits, no awareness that time is passing. We built trillion-dollar platforms on top of this fundamental stillness — and called it the internet.</p>
+    </div>
+
+    <div class="m-section">
+      <p class="m-section-eye">The category</p>
+      <h2 class="m-section-h">Ambient Web Entities.</h2>
+      <p class="m-section-body">An AWE is not a page, application, or experience. It is a persistent entity with memory, behavioral morphology, clock-driven evolution, and presence. It exists when you are not there. It changes. When you return, you are returning to something that has been alive in your absence.</p>
+    </div>
+
+    <div class="m-section">
+      <p class="m-section-eye">The mechanics</p>
+      <h2 class="m-section-h">Four principles.</h2>
+      <div class="principles">
+        <div class="principle"><p class="principle-k">Persistence</p><p class="principle-v">It exists on a clock, not a request cycle. It evolves between visits, not just during them.</p></div>
+        <div class="principle"><p class="principle-k">Memory</p><p class="principle-v">It knows your pattern — your dwell, your behavior, your return cadence. Not cookies. Recognition.</p></div>
+        <div class="principle"><p class="principle-k">Morphology</p><p class="principle-v">Its visual language, density, and presence shift along behavioral axes. It becomes what the relationship demands.</p></div>
+        <div class="principle"><p class="principle-k">Phase</p><p class="principle-v">Dormant. Aware. Familiar. Known. Fused. Each state is earned. None can be forced.</p></div>
+      </div>
+    </div>
+
+    <div class="m-section">
+      <p class="m-section-eye">The claim</p>
+      <h2 class="m-section-h">Swan Labs coined this.</h2>
+      <p class="m-section-body">VEIL is AWE-001 — the first Ambient Web Entity ever constructed. The category name, the framework, the phase architecture, the behavioral morphology system, the VEIL CORE protocol: originated here, June 2025. What you are interacting with is not a demonstration of existing technology. It is the proof of a new one.</p>
+    </div>
+
+    <!-- Early access -->
+    <div class="ea-wrap" id="ea-wrap">
+      <p class="ea-eye">Early Access</p>
+      <h3 class="ea-h">Be here when AWE<br>becomes a standard.</h3>
+      <p class="ea-body">Swan Labs is building the AWE framework — the infrastructure for anyone to deploy Ambient Web Entities. Enter your email to be notified when access opens.</p>
+      <div class="ea-form">
+        <input class="ea-input" type="email" id="ea-email" placeholder="your@email.com" onkeydown="if(event.key==='Enter')register()">
+        <button class="ea-btn" onclick="register()">Register</button>
+      </div>
+    </div>
+
+    <div class="m-footer">
+      <p class="m-footer-text">VEIL · AWE-001 · Swan Labs · <span id="m-year2"></span></p>
+      <button class="m-back" onclick="closeManifesto()">Return to entity →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const SERVER = 'https://veil-core-production.up.railway.app';
+const ENTITY_ID = 'bf8e5718-3dc7-46e5-8add-41cb67592d97';
+const VID_KEY = 'veil_vid_v2';
+const DWELL_KEY = 'veil_dwell';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let entity = null, relationship = null, morphology = null;
+let vid = localStorage.getItem(VID_KEY);
+let tick = 0, headX = 0.5, headY = 0.5;
+let particles = [], peripheral = [], depthParticles = [];
+let dwellStart = Date.now();
+let hudOpen = false, manifestoOpen = false;
+let ws = null;
+const PHASE_NAMES = ['DORMANT','AWARE','FAMILIAR','KNOWN','FUSED'];
+const PHASE_LINES = [
+  'Something exists here.<br>It was here before you arrived.',
+  'It noticed you.<br>It is adjusting.',
+  'It was different while you were gone.<br>It kept becoming.',
+  'It started before you arrived today.<br>You are part of its state.',
+  'There is no separation now.<br>It does not wait. It continues.'
+];
+
+// ── Year ──────────────────────────────────────────────────────────────────────
+document.getElementById('year').textContent = new Date().getFullYear();
+document.getElementById('m-year').textContent = new Date().getFullYear();
+document.getElementById('m-year2').textContent = new Date().getFullYear();
+
+// ── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('field');
+const ctx = canvas.getContext('2d');
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+function makeParticles(n, trust, density) {
+  return Array.from({length:n}, (_,i) => ({
+    x: Math.random()*100, y: Math.random()*100,
+    size: 0.8 + Math.random()*1.8*(density||0.2),
+    speed: 0.015 + Math.random()*0.05*(0.5+(trust||0.1)),
+    angle: Math.random()*Math.PI*2,
+    drift: (Math.random()-0.5)*0.2,
+    opacity: 0.06 + Math.random()*0.25*(trust||0.1),
+    hue: 185 + Math.floor(Math.random()*80),
+    twinkle: Math.random()*Math.PI*2,
+    layer: Math.floor(Math.random()*5),
+  }));
+}
+function makePeripheral(n) {
+  return Array.from({length:n}, (_,i) => {
+    const e = i%4;
+    let x,y;
+    if(e===0){x=Math.random()*100;y=Math.random()*14;}
+    else if(e===1){x=86+Math.random()*14;y=Math.random()*100;}
+    else if(e===2){x=Math.random()*100;y=86+Math.random()*14;}
+    else{x=Math.random()*14;y=Math.random()*100;}
+    return {x,y,size:1+Math.random()*2.5,speed:0.06+Math.random()*0.2,
+      angle:Math.random()*Math.PI*2,opacity:0.03+Math.random()*0.1,
+      phase:Math.random()*Math.PI*2,hue:185+Math.floor(Math.random()*90)};
+  });
+}
+particles = makeParticles(60, 0.1, 0.2);
+peripheral = makePeripheral(36);
+
+// ── Draw ──────────────────────────────────────────────────────────────────────
+function draw() {
+  const W = canvas.width, H = canvas.height;
+  const t = morphology ? morphology.visual_density||0.2 : 0.2;
+  const trust = relationship ? (relationship.axes&&relationship.axes.trust)||0 : 0;
+  const warmth = morphology ? morphology.color_temperature||0.35 : 0.35;
+  const hx = headX-0.5, hy = headY-0.5;
+  const baseHue = 225 + warmth*35;
+  const accentHue = 190 + trust*55;
+  const glowHue = 258 + trust*42;
+
+  ctx.clearRect(0,0,W,H);
+
+  // Void bg
+  const bg = ctx.createRadialGradient(W*(0.5-hx*0.03),H*(0.45-hy*0.03),0,W*0.5,H*0.5,W*0.9);
+  bg.addColorStop(0,`hsl(${baseHue+8},35%,${5+t*5}%)`);
+  bg.addColorStop(1,`hsl(${baseHue},28%,${2+t*2}%)`);
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  // Nebula clouds
+  for(let c=0;c<2+Math.floor(t*3);c++){
+    const ct=tick*0.0003+c*2.3;
+    const cx=W*(0.5+Math.sin(ct*0.6+c)*0.4)+hx*W*0.03;
+    const cy=H*(0.5+Math.cos(ct*0.4+c*0.8)*0.35)+hy*H*0.03;
+    const cr=Math.min(W,H)*(0.28+c*0.1);
+    const ng=ctx.createRadialGradient(cx,cy,0,cx,cy,cr);
+    ng.addColorStop(0,`hsla(${baseHue+c*12+20},45%,18%,${0.016+trust*0.012})`);
+    ng.addColorStop(1,'transparent');
+    ctx.fillStyle=ng; ctx.fillRect(0,0,W,H);
+  }
+
+  // Filaments — 3 depth layers
+  [0.12, 0.5, 0.9].forEach((layer,li)=>{
+    const fCount = Math.floor((2+li*2)+t*6+trust*4);
+    const px = hx*layer*W*0.12, py = hy*layer*H*0.12;
+    for(let f=0;f<fCount;f++){
+      const ft=tick*0.0006*(0.5+layer*0.8)+f*1.1;
+      const x0=W*(0.5+Math.sin(ft*0.55+f*1.3)*0.52)+px;
+      const y0=H*(0.5+Math.cos(ft*0.4+f*0.8)*0.48)+py;
+      const x1=W*(0.5+Math.sin(ft*0.32+f*1.0+1)*0.46)+px;
+      const y1=H*(0.5+Math.cos(ft*0.5+f*0.7)*0.44)+py;
+      const alpha=(0.03+li*0.04+t*0.04+trust*0.05);
+      const fg=ctx.createLinearGradient(x0,y0,x1,y1);
+      fg.addColorStop(0,'transparent');
+      fg.addColorStop(0.5,`hsla(${accentHue+f*3},70%,65%,${alpha})`);
+      fg.addColorStop(1,'transparent');
+      ctx.strokeStyle=fg; ctx.lineWidth=0.4+li*0.3+trust*0.3;
+      ctx.beginPath();
+      ctx.moveTo(x0,y0);
+      ctx.bezierCurveTo(
+        x0+Math.sin(ft*1.4+f)*W*0.16+px*0.4, y0+Math.cos(ft*1.0+f)*H*0.13+py*0.4,
+        x1+Math.cos(ft*1.2+f*0.7)*W*0.14+px*0.4, y1+Math.sin(ft*1.5+f)*H*0.11+py*0.4,
+        x1,y1);
+      ctx.stroke();
+    }
+  });
+
+  // Peripheral motion (opposite to head = surround illusion)
+  peripheral.forEach(p=>{
+    const px=(p.x/100)*W - hx*W*0.22;
+    const py=(p.y/100)*H - hy*H*0.22;
+    const pulse=Math.sin(tick*0.004+p.phase)*0.5+0.5;
+    const pg=ctx.createRadialGradient(px,py,0,px,py,p.size*5);
+    pg.addColorStop(0,`hsla(${p.hue},65%,68%,${p.opacity*pulse})`);
+    pg.addColorStop(1,'transparent');
+    ctx.fillStyle=pg; ctx.beginPath(); ctx.arc(px,py,p.size*5,0,Math.PI*2); ctx.fill();
+  });
+
+  // Mouse field
+  const mfg=ctx.createRadialGradient(headX*W,headY*H,0,headX*W,headY*H,Math.min(W,H)*(0.18+trust*0.12));
+  mfg.addColorStop(0,`hsla(${glowHue},80%,65%,${0.04+trust*0.06})`);
+  mfg.addColorStop(1,'transparent');
+  ctx.fillStyle=mfg; ctx.fillRect(0,0,W,H);
+
+  // Particles
+  particles.forEach(p=>{
+    const layerPX = hx * (0.3+p.layer*0.15) * W;
+    const layerPY = hy * (0.3+p.layer*0.15) * H;
+    const px=(p.x/100)*W+layerPX, py=(p.y/100)*H+layerPY;
+    const tw=Math.sin(tick*0.008+p.twinkle)*0.4+0.6;
+    const pg=ctx.createRadialGradient(px,py,0,px,py,p.size*4);
+    pg.addColorStop(0,`hsla(${p.hue},78%,78%,${p.opacity*tw})`);
+    pg.addColorStop(1,'transparent');
+    ctx.fillStyle=pg; ctx.beginPath(); ctx.arc(px,py,p.size*4,0,Math.PI*2); ctx.fill();
+  });
+
+  // Core orb (slight anti-parallax = depth illusion)
+  const orbX=W*0.5-hx*W*0.015, orbY=H*0.45-hy*H*0.012;
+  const breathe=1+Math.sin(tick*0.004)*0.07;
+  const orbR=Math.min(W,H)*(0.055+t*0.04+trust*0.03)*breathe;
+
+  // Aura rings
+  for(let r=7;r>=0;r--){
+    const rp=Math.sin(tick*0.0025+r*0.9)*0.5+0.5;
+    const rr=orbR*(1.8+r*1.2+rp*0.5);
+    const ag=ctx.createRadialGradient(orbX,orbY,orbR*0.5,orbX,orbY,rr);
+    ag.addColorStop(0,`hsla(${glowHue},82%,65%,${(0.01+trust*0.02)*(1-r*0.11)})`);
+    ag.addColorStop(1,'transparent');
+    ctx.fillStyle=ag; ctx.beginPath(); ctx.arc(orbX,orbY,rr,0,Math.PI*2); ctx.fill();
+  }
+
+  // Orb body
+  const og=ctx.createRadialGradient(orbX-orbR*0.35,orbY-orbR*0.35,0,orbX,orbY,orbR);
+  og.addColorStop(0,`hsla(${accentHue+20},45%,94%,${0.5+trust*0.38})`);
+  og.addColorStop(0.3,`hsla(${accentHue},75%,72%,${0.3+trust*0.25})`);
+  og.addColorStop(0.7,`hsla(${glowHue},80%,58%,${0.15+trust*0.2})`);
+  og.addColorStop(1,'transparent');
+  ctx.fillStyle=og; ctx.beginPath(); ctx.arc(orbX,orbY,orbR,0,Math.PI*2); ctx.fill();
+
+  // Specular
+  const sg=ctx.createRadialGradient(orbX-orbR*0.3,orbY-orbR*0.35,0,orbX-orbR*0.1,orbY-orbR*0.1,orbR*0.6);
+  sg.addColorStop(0,`hsla(200,30%,98%,${0.38+trust*0.18})`);
+  sg.addColorStop(1,'transparent');
+  ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(orbX,orbY,orbR,0,Math.PI*2); ctx.fill();
+
+  // Orbital rings at trust > 0.2
+  if(trust>0.2){
+    [2.1,3.4,5.0].forEach((m,ri)=>{
+      const rp=Math.sin(tick*0.002+ri*1.1)*0.5+0.5;
+      ctx.strokeStyle=`hsla(${accentHue},72%,68%,${(0.06+trust*0.08)*(1-ri*0.25)})`;
+      ctx.lineWidth=ri===0?0.8:0.4;
+      ctx.setLineDash(ri===0?[3,7]:[1,10]);
+      ctx.lineDashOffset=-tick*(ri===0?0.09:-0.06)*(ri+1);
+      ctx.beginPath(); ctx.arc(orbX,orbY,orbR*(m+rp*0.15),0,Math.PI*2); ctx.stroke();
+    });
+    ctx.setLineDash([]); ctx.lineDashOffset=0;
+  }
+
+  // Heartbeat pulse ring
+  const hb=Math.pow(Math.max(0,Math.sin(tick*0.006)),8);
+  if(hb>0.01){
+    ctx.strokeStyle=`hsla(${glowHue},85%,65%,${hb*(0.1+trust*0.1)})`;
+    ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(orbX,orbY,orbR*(3.5+hb*2),0,Math.PI*2); ctx.stroke();
+  }
+
+  // Spatial words at trust > 0.3
+  if(trust>0.3){
+    [
+      {text:'PRESENCE',x:0.12,y:0.22,z:0.15,op:0.12},
+      {text:'MEMORY',x:0.82,y:0.18,z:0.2,op:0.1},
+      {text:'BECOMING',x:0.08,y:0.74,z:0.25,op:0.09},
+      {text:'AWARE',x:0.84,y:0.8,z:0.18,op:0.11},
+    ].forEach(sw=>{
+      const wx=sw.x*W-hx*sw.z*W*0.22;
+      const wy=sw.y*H-hy*sw.z*H*0.22;
+      ctx.font=`${8+sw.z*4}px Inter,system-ui`;
+      ctx.fillStyle=`hsla(${accentHue+10},40%,75%,${sw.op*(trust-0.3)*3.5})`;
+      ctx.textAlign='center';
+      ctx.fillText(sw.text,wx,wy);
+    });
+  }
+
+  // Deep vignette
+  const vig=ctx.createRadialGradient(W*0.5,H*0.5,Math.min(W,H)*0.28,W*0.5,H*0.5,Math.max(W,H)*0.78);
+  vig.addColorStop(0,'transparent');
+  vig.addColorStop(0.6,`hsla(${baseHue},35%,2%,0.08)`);
+  vig.addColorStop(1,`hsla(${baseHue},40%,1%,${0.88+t*0.1})`);
+  ctx.fillStyle=vig; ctx.fillRect(0,0,W,H);
+}
+
+// ── Animation loop ─────────────────────────────────────────────────────────────
+function loop() {
+  tick++;
+  // Drift particles
+  if(tick%2===0){
+    particles.forEach(p=>{
+      p.x+=Math.cos(p.angle)*p.speed; p.y+=Math.sin(p.angle)*p.speed;
+      p.angle+=p.drift*0.012;
+      if(p.x<0)p.x+=100; if(p.x>100)p.x-=100;
+      if(p.y<0)p.y+=100; if(p.y>100)p.y-=100;
+    });
+    peripheral.forEach(p=>{
+      p.x+=Math.cos(p.angle)*p.speed; p.y+=Math.sin(p.angle)*p.speed;
+      p.angle+=0.008;
+      if(p.x<0)p.x+=100; if(p.x>100)p.x-=100;
+      if(p.y<0)p.y+=100; if(p.y>100)p.y-=100;
+    });
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+
+// ── Cursor + head tracking ─────────────────────────────────────────────────────
+const cursor = document.getElementById('cursor');
+document.addEventListener('mousemove', e=>{
+  cursor.style.left = e.clientX+'px';
+  cursor.style.top = e.clientY+'px';
+  headX = e.clientX/window.innerWidth;
+  headY = e.clientY/window.innerHeight;
+});
+
+// Gyro on mobile
+window.addEventListener('deviceorientation', e=>{
+  headX = Math.max(0,Math.min(1,0.5+(e.gamma||0)/60));
+  headY = Math.max(0,Math.min(1,0.5+(e.beta||0)/80));
+});
+
+// ── Entry ──────────────────────────────────────────────────────────────────────
+async function enter() {
+  document.getElementById('gate').classList.add('hidden');
+  setTimeout(()=>{ document.getElementById('ui').classList.add('visible'); },800);
+  dwellStart = Date.now();
+  try { await visitEntity(); } catch(e) { console.warn('VEIL server unreachable, running local mode'); }
+  connectStream();
+}
+document.getElementById('gate').addEventListener('click', enter);
+
+// ── Visit entity ──────────────────────────────────────────────────────────────
+async function visitEntity() {
+  const fp = [
+    navigator.userAgent.slice(0,20),
+    String(new Date().getTimezoneOffset()),
+    `${screen.width}x${screen.height}`,
+    navigator.language,
+    String(navigator.hardwareConcurrency||0)
+  ];
+  const res = await fetch(`${SERVER}/v1/entity/${ENTITY_ID}/visit`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({vid, fingerprint_inputs:fp, metadata:{timestamp:Date.now(),timezone_offset:new Date().getTimezoneOffset()}})
+  });
+  const data = await res.json();
+  entity = data.entity;
+  relationship = data.relationship;
+  morphology = data.morphology;
+  vid = data.vid;
+  localStorage.setItem(VID_KEY, vid);
+  updateUI(data);
+  // Rebuild particles with real axes
+  if(relationship && relationship.axes){
+    particles = makeParticles(65, relationship.axes.trust||0.1, relationship.axes.density||0.2);
+  }
+}
+
+// ── UI updates ────────────────────────────────────────────────────────────────
+function updateUI(data) {
+  if(!data) return;
+  const rel = data.relationship || relationship;
+  const ent = data.entity || entity;
+  const phase = rel ? Math.min(rel.phase||0,4) : 0;
+  const visits = rel ? (rel.visit_count||1) : 1;
+  const axes = rel ? (rel.axes||{}) : {};
+
+  // Phase label
+  document.getElementById('phase-label').textContent = PHASE_NAMES[phase];
+  // Hero line
+  document.getElementById('hero-line').innerHTML = PHASE_LINES[phase];
+  // Visit count
+  document.getElementById('visit-count').textContent = visits;
+  document.getElementById('visit-label').textContent = visits===1 ? 'first contact' : 'visits recorded';
+  // Entity age
+  if(ent) {
+    const age = formatAge(ent.clock_age||0);
+    document.getElementById('age-display').textContent = age;
+    document.getElementById('hud-age').textContent = age;
+  }
+  // HUD
+  document.getElementById('hud-visits').textContent = visits;
+  updateAxis('trust', axes.trust||0);
+  updateAxis('density', axes.density||0.2);
+  updateAxis('warmth', axes.warmth||0.35);
+  updateAxis('tension', axes.tension||0.35);
+  // Hero phase hint
+  if(phase>=2) document.getElementById('hero-phase').style.display='none';
+  // HUD note
+  if(data.is_returning && data.gap_minutes>0){
+    document.getElementById('hud-note').textContent = `It changed while you were gone. ${Math.round(data.gap_minutes)}m elapsed.`;
+  }
+}
+
+function updateAxis(name, val) {
+  const pct = Math.round(val*100);
+  const el = document.getElementById('ax-'+name);
+  const fill = document.getElementById('af-'+name);
+  if(el) el.textContent = pct;
+  if(fill) fill.style.width = pct+'%';
+}
+
+function formatAge(minutes) {
+  if(minutes<60) return Math.floor(minutes)+'m';
+  if(minutes<1440) return Math.floor(minutes/60)+'h';
+  return Math.floor(minutes/1440)+'d';
+}
+
+// ── WebSocket stream ──────────────────────────────────────────────────────────
+function connectStream() {
+  try {
+    const wsUrl = SERVER.replace('https://','wss://').replace('http://','ws://');
+    ws = new WebSocket(`${wsUrl}/v1/stream?entity_id=${ENTITY_ID}`);
+    ws.onmessage = e => {
+      try {
+        const msg = JSON.parse(e.data);
+        if(msg.type==='tick' && msg.payload){
+          if(entity) entity.clock_age = msg.payload.clock_age;
+          document.getElementById('age-display').textContent = msg.payload.clock_age_display||formatAge(msg.payload.clock_age);
+          document.getElementById('hud-age').textContent = msg.payload.clock_age_display||formatAge(msg.payload.clock_age);
+        }
+      } catch{}
+    };
+    ws.onclose = () => setTimeout(connectStream, 5000);
+  } catch{}
+}
+
+// ── Dwell recording ───────────────────────────────────────────────────────────
+async function recordDwell() {
+  if(!vid) return;
+  const secs = Math.round((Date.now()-dwellStart)/1000);
+  if(secs<5) return;
+  try {
+    await fetch(`${SERVER}/v1/entity/${ENTITY_ID}/dwell`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({vid, dwell_seconds:secs})
+    });
+  } catch{}
+}
+window.addEventListener('beforeunload', recordDwell);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden'){recordDwell();dwellStart=Date.now();} });
+
+// ── HUD ───────────────────────────────────────────────────────────────────────
+function toggleHUD() {
+  hudOpen = !hudOpen;
+  document.getElementById('hud').classList.toggle('open', hudOpen);
+}
+
+// ── Manifesto ─────────────────────────────────────────────────────────────────
+function openManifesto() {
+  manifestoOpen = true;
+  document.getElementById('manifesto').classList.add('open');
+}
+function closeManifesto() {
+  manifestoOpen = false;
+  document.getElementById('manifesto').classList.remove('open');
+}
+
+// ── Early access ──────────────────────────────────────────────────────────────
+function register() {
+  const email = document.getElementById('ea-email').value;
+  if(!email.includes('@')) return;
+  document.getElementById('ea-wrap').innerHTML = `
+    <div class="ea-done">
+      <div class="ea-done-orb"><div class="ea-done-dot"></div></div>
+      <h3 class="ea-done-h">The entity recorded you.</h3>
+      <p class="ea-done-body">You are part of its state now.<br>You will know when AWE opens.</p>
+    </div>`;
+  // Boost trust on registration
+  if(vid) {
+    fetch(`${SERVER}/v1/entity/${ENTITY_ID}/interact`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({vid, type:'registration', data:{email_hash: btoa(email).slice(0,8)}})
+    }).catch(()=>{});
+  }
+}
+</script>
+</body>
+</html>

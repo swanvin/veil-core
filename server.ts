@@ -14,6 +14,8 @@ import express, { Request, Response, NextFunction } from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import cors from "cors";
 import http from "http";
+import path from "path";
+import fs from "fs";
 import {
   createEntity,
   createRelationship,
@@ -211,6 +213,16 @@ app.get("/v1/entities", requireAuth, (req, res) => {
     relationship_count: relationships.get(e.id)?.size ?? 0,
   }));
   res.json({ entities: list, count: list.length });
+});
+
+// GET / — serve the VEIL world-facing site
+app.get("/", (req, res) => {
+  const indexPath = path.join(process.cwd(), "index.html");
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.redirect("/v1/health");
+  }
 });
 
 // GET /v1/health
