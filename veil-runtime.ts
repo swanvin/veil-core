@@ -187,7 +187,7 @@ export function applyPhaseTransitions(
       phase_transitions: [...relationship.phase_transitions, transition],
       events: [
         ...relationship.events,
-        { type: "phase_transition", timestamp: Date.now(), data: transition },
+        { type: "phase_transition" as const, timestamp: Date.now(), data: transition as unknown as Record<string, unknown> },
       ],
     },
     transitioned: true,

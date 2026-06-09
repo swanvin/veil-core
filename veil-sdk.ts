@@ -1,27 +1,13 @@
 /**
  * VEIL SDK v1.0.0
  * Swan Labs
- *
- * Drop this into any website. Connect to VEIL CORE.
- * The entity knows when you arrive. It remembers when you leave.
- *
- * Usage:
- *   import { VEILClient } from "@swanlabs/veil-sdk";
- *
- *   const veil = new VEILClient({
- *     serverUrl: "https://your-veil-server.com",
- *     entityId:  "your-entity-uuid",
- *   });
- *
- *   const { morphology, relationship } = await veil.enter();
- *   veil.on("tick", (state) => updateRendering(state));
  */
 
 export interface VEILConfig {
   serverUrl: string;
   entityId: string;
-  autoEnter?: boolean;     // Auto-call enter() on construction
-  autoRecordDwell?: boolean; // Auto-record dwell on page unload
+  autoEnter?: boolean;
+  autoRecordDwell?: boolean;
 }
 
 export interface VEILMorphology {
@@ -71,7 +57,6 @@ type VEILEventType = "tick" | "phase_transition" | "visitor_join" | "connected" 
 type VEILEventHandler = (data: unknown) => void;
 
 const VID_STORAGE_KEY = "veil_vid";
-const DWELL_START_KEY = "veil_dwell_start";
 
 export class VEILClient {
   private config: VEILConfig;
@@ -79,7 +64,6 @@ export class VEILClient {
   private ws: WebSocket | null = null;
   private listeners = new Map<VEILEventType, Set<VEILEventHandler>>();
   private currentMorphology: VEILMorphology | null = null;
-  private enterResult: EnterResult | null = null;
   private dwellStart = Date.now();
   private reconnectAttempts = 0;
   private maxReconnects = 5;
@@ -87,96 +71,52 @@ export class VEILClient {
   constructor(config: VEILConfig) {
     this.config = { autoEnter: false, autoRecordDwell: true, ...config };
     this.vid = this.loadVID();
-
-    if (this.config.autoRecordDwell) {
-      this.setupDwellTracking();
-    }
-
-    if (this.config.autoEnter) {
-      this.enter().catch(console.error);
-    }
+    if (this.config.autoRecordDwell) this.setupDwellTracking();
+    if (this.config.autoEnter) this.enter().catch(console.error);
   }
 
-  // ─── Public API ─────────────────────────────────────────────────────────────
-
-  /**
-   * Enter the entity. Records visit, returns relationship state and morphology.
-   * This is the moment of contact.
-   */
   async enter(): Promise<EnterResult> {
     const fingerprints = this.collectFingerprint();
     const response = await this.post(`/v1/entity/${this.config.entityId}/visit`, {
       vid: this.vid,
       fingerprint_inputs: fingerprints,
-      metadata: {
-        timestamp: Date.now(),
-        timezone_offset: new Date().getTimezoneOffset(),
-      },
-    });
+      metadata: { timestamp: Date.now(), timezone_offset: new Date().getTimezoneOffset() },
+    }) as EnterResult;
 
-    // Store VID for future visits
     this.vid = response.vid;
     this.saveVID(response.vid);
-
     this.currentMorphology = response.morphology;
-    this.enterResult = response;
     this.dwellStart = Date.now();
-
-    // Connect to live stream
     this.connectStream();
-
-    return response as EnterResult;
+    return response;
   }
 
-  /**
-   * Get current morphology — the entity's visual/behavioral state for this visitor.
-   */
-  getMorphology(): VEILMorphology | null {
-    return this.currentMorphology;
-  }
+  getMorphology(): VEILMorphology | null { return this.currentMorphology; }
 
-  /**
-   * Get the entity's current state.
-   */
   async getEntityState(): Promise<VEILEntitySummary> {
-    const response = await this.get(`/v1/entity/${this.config.entityId}`);
+    const response = await this.get(`/v1/entity/${this.config.entityId}`) as { entity: VEILEntitySummary };
     return response.entity;
   }
 
-  /**
-   * Record dwell time. Call this when the visitor leaves or on intervals.
-   */
   async recordDwell(seconds?: number): Promise<void> {
     if (!this.vid) return;
     const dwellSeconds = seconds ?? (Date.now() - this.dwellStart) / 1000;
-    if (dwellSeconds < 5) return; // Don't record trivial dwell
-
+    if (dwellSeconds < 5) return;
     await this.post(`/v1/entity/${this.config.entityId}/dwell`, {
       vid: this.vid,
       dwell_seconds: Math.round(dwellSeconds),
-    }).catch(() => {}); // Fail silently on unload
+    }).catch(() => {});
   }
 
-  /**
-   * Subscribe to entity events.
-   */
   on(event: VEILEventType, handler: VEILEventHandler): () => void {
     if (!this.listeners.has(event)) this.listeners.set(event, new Set());
     this.listeners.get(event)!.add(handler);
     return () => this.listeners.get(event)?.delete(handler);
   }
 
-  /**
-   * Disconnect from the entity stream.
-   */
-  disconnect(): void {
-    this.ws?.close();
-    this.ws = null;
-  }
+  disconnect(): void { this.ws?.close(); this.ws = null; }
 
-  // ─── Private ────────────────────────────────────────────────────────────────
-
-  private async post(path: string, body: object): Promise<Record<string, unknown>> {
+  private async post(path: string, body: object): Promise<unknown> {
     const res = await fetch(`${this.config.serverUrl}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -186,7 +126,7 @@ export class VEILClient {
     return res.json();
   }
 
-  private async get(path: string): Promise<Record<string, unknown>> {
+  private async get(path: string): Promise<unknown> {
     const res = await fetch(`${this.config.serverUrl}${path}`);
     if (!res.ok) throw new Error(`VEIL: ${res.status}`);
     return res.json();
@@ -194,66 +134,35 @@ export class VEILClient {
 
   private connectStream(): void {
     if (this.ws) return;
-    const wsUrl = this.config.serverUrl
-      .replace("https://", "wss://")
-      .replace("http://", "ws://");
-
+    const wsUrl = this.config.serverUrl.replace("https://", "wss://").replace("http://", "ws://");
     try {
       this.ws = new WebSocket(`${wsUrl}/v1/stream?entity_id=${this.config.entityId}`);
-
-      this.ws.onopen = () => {
-        this.reconnectAttempts = 0;
-        this.emit("connected", { entity_id: this.config.entityId });
-      };
-
+      this.ws.onopen = () => { this.reconnectAttempts = 0; this.emit("connected", {}); };
       this.ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data as string);
-          if (msg.type === "tick" && msg.payload) {
-            this.emit("tick", msg.payload);
-          } else if (msg.type === "phase_transition") {
-            this.emit("phase_transition", msg.payload);
-          } else if (msg.type === "visitor_join") {
-            this.emit("visitor_join", msg.payload);
-          }
+          this.emit(msg.type as VEILEventType, msg.payload);
         } catch {}
       };
-
-      this.ws.onclose = () => {
-        this.ws = null;
-        this.emit("disconnected", {});
-        this.attemptReconnect();
-      };
-
-      this.ws.onerror = (err) => {
-        this.emit("error", err);
-      };
-    } catch {
-      // WebSocket not available (SSR, etc.) — degrade gracefully
-    }
+      this.ws.onclose = () => { this.ws = null; this.emit("disconnected", {}); this.attemptReconnect(); };
+      this.ws.onerror = (err) => { this.emit("error", err); };
+    } catch {}
   }
 
   private attemptReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnects) return;
     this.reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-    setTimeout(() => this.connectStream(), delay);
+    setTimeout(() => this.connectStream(), Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000));
   }
 
   private emit(event: VEILEventType, data: unknown): void {
-    this.listeners.get(event)?.forEach(handler => {
-      try { handler(data); } catch {}
-    });
+    this.listeners.get(event)?.forEach(handler => { try { handler(data); } catch {} });
   }
 
-  /**
-   * Collects behavioral fingerprint inputs.
-   * Hashed server-side — never raw values stored.
-   */
   private collectFingerprint(): string[] {
     if (typeof window === "undefined") return ["server"];
     return [
-      navigator.userAgent.slice(0, 20),      // Truncated
+      navigator.userAgent.slice(0, 20),
       String(new Date().getTimezoneOffset()),
       `${screen.width}x${screen.height}`,
       navigator.language,
@@ -261,51 +170,14 @@ export class VEILClient {
     ];
   }
 
-  private loadVID(): string | null {
-    try { return localStorage.getItem(VID_STORAGE_KEY); } catch { return null; }
-  }
-
-  private saveVID(vid: string): void {
-    try { localStorage.setItem(VID_STORAGE_KEY, vid); } catch {}
-  }
+  private loadVID(): string | null { try { return localStorage.getItem(VID_STORAGE_KEY); } catch { return null; } }
+  private saveVID(vid: string): void { try { localStorage.setItem(VID_STORAGE_KEY, vid); } catch {} }
 
   private setupDwellTracking(): void {
     if (typeof window === "undefined") return;
-    window.addEventListener("beforeunload", () => {
-      this.recordDwell();
-    });
-    // Also record on visibility change
+    window.addEventListener("beforeunload", () => { this.recordDwell(); });
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") {
-        this.recordDwell();
-        this.dwellStart = Date.now(); // Reset for return
-      }
+      if (document.visibilityState === "hidden") { this.recordDwell(); this.dwellStart = Date.now(); }
     });
   }
-}
-
-// ─── React Hook (optional) ────────────────────────────────────────────────────
-
-/**
- * useVEIL — React hook for connecting to a VEIL entity.
- *
- * Usage:
- *   const { morphology, entity, phase, isReturning } = useVEIL({
- *     serverUrl: "https://your-veil-server.com",
- *     entityId:  "your-entity-uuid",
- *   });
- */
-export function useVEIL(config: VEILConfig) {
-  // This is a sketch — real implementation uses useState/useEffect
-  // Provided here as the interface contract
-  return {
-    morphology: null as VEILMorphology | null,
-    entity: null as VEILEntitySummary | null,
-    phase: 0,
-    phaseName: "DORMANT",
-    isReturning: false,
-    isConnected: false,
-    vid: null as string | null,
-    client: null as VEILClient | null,
-  };
 }
