@@ -355,7 +355,7 @@
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
 const SERVER = 'https://veil-core-production.up.railway.app';
-const ENTITY_ID = '4cb401d4-473a-4ed6-b151-19fdb1aca319';
+const ENTITY_ID = 'bf8e5718-3dc7-46e5-8add-41cb67592d97';
 const VID_KEY = 'veil_vid_v2';
 const DWELL_KEY = 'veil_dwell';
 
@@ -758,15 +758,27 @@ function closeManifesto() {
 }
 
 // ── Early access ──────────────────────────────────────────────────────────────
-function register() {
+async function register() {
   const email = document.getElementById('ea-email').value;
   if(!email.includes('@')) return;
+
+  // Send to Formspree — lands in unveil.living@protonmail.com
+  try {
+    await fetch('https://formspree.io/f/xlgklqvw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ email, entity: 'AWE-001', source: 'unveil.living' }),
+    });
+  } catch(e) { console.warn('Formspree error:', e); }
+
+  // Show confirmation
   document.getElementById('ea-wrap').innerHTML = `
     <div class="ea-done">
       <div class="ea-done-orb"><div class="ea-done-dot"></div></div>
       <h3 class="ea-done-h">The entity recorded you.</h3>
       <p class="ea-done-body">You are part of its state now.<br>You will know when AWE opens.</p>
     </div>`;
+
   // Boost trust on registration
   if(vid) {
     fetch(`${SERVER}/v1/entity/${ENTITY_ID}/interact`,{
